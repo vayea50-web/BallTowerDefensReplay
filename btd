@@ -1,1 +1,179 @@
+-- [[ ULTIMATE MACRO SYSTEM - VERSION 1.2 FIXED ]] --
 
+local P = game.Players.LocalPlayer
+local UIS = game:GetService("UserInputService")
+local VIM = game:GetService("VirtualInputManager")
+local RunService = game:GetService("RunService")
+local cam = workspace.CurrentCamera
+local StarterGui = game:GetService("StarterGui")
+
+local recording = {}
+local isRecording = false
+local isPlaying = false
+local freecamActive = false
+local startTime = 0
+local fileName = "macro_stable_save.txt"
+local rx, ry = 0, 0
+local flySpeed = 1.5
+
+-- Уведомление о загрузке
+pcall(function()
+    StarterGui:SetCore("SendNotification", {
+        Title = "Macro System",
+        Text = "Loaded! RShift to open menu",
+        Duration = 5
+    })
+end)
+
+-- СОЗДАНИЕ МЕНЮ
+local g = Instance.new("ScreenGui", P.PlayerGui)
+g.Name = "MacroMenu_Fixed"
+g.ResetOnSpawn = false
+
+local Main = Instance.new("Frame", g)
+Main.Size = UDim2.new(0, 220, 0, 260)
+Main.Position = UDim2.new(0, 15, 0, 15)
+Main.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+Main.BorderSizePixel = 2
+Main.BorderColor3 = Color3.new(1, 0, 0)
+
+local T = Instance.new("TextLabel", Main)
+T.Size = UDim2.new(1, 0, 0, 30)
+T.BackgroundColor3 = Color3.new(0.4, 0, 0)
+T.Text = "MACRO RECORDER"
+T.TextColor3 = Color3.new(1, 1, 1)
+T.Font = Enum.Font.GothamBold
+
+local function createBtn(txt, y, color, func)
+    local b = Instance.new("TextButton", Main)
+    b.Size = UDim2.new(1, -20, 0, 35)
+    b.Position = UDim2.new(0, 10, 0, y)
+    b.Text = txt
+    b.BackgroundColor3 = color
+    b.TextColor3 = Color3.new(1, 1, 1)
+    b.Font = Enum.Font.GothamBold
+    b.MouseButton1Click:Connect(func)
+    return b
+end
+
+-- ЛОГИКА АВТО-РЕСТАРТА
+local function checkGameOver()
+    local gui = P:FindFirstChild("PlayerGui")
+    if not gui then return nil end
+    for _, v in pairs(gui:GetDescendants()) do
+        if v:IsA("GuiButton") and v.Visible and (v.Name:lower():find("retry") or v.Text:lower():find("retry")) then
+            return v
+        end
+    end
+    return nil
+end
+
+-- ВОСПРОИЗВЕДЕНИЕ С ЗАЩИТОЙ
+local function playMacro()
+    if isPlaying or not isfile(fileName) then return end
+    local success, data = pcall(function() return game:GetService("HttpService"):JSONDecode(readfile(fileName)) end)
+    if not success then return end
+    
+    isPlaying = true
+    if data.camCFrame then
+        cam.CameraType = Enum.CameraType.Scriptable
+        local coords = {}
+        for s in data.camCFrame:gmatch("[^,]+") do table.insert(coords, tonumber(s)) end
+        cam.CFrame = CFrame.new(unpack(coords))
+    end
+
+    task.spawn(function()
+        local startPlayTime = tick()
+        for i, action in ipairs(data) do
+            if not isPlaying then break end
+            if i == 1 and not action.type then continue end
+            
+            -- Ожидание с проверкой на вылет/проигрыш
+            while (action.time - (tick() - startPlayTime)) > 0 do
+                local retry = checkGameOver()
+                if retry then
+                    VIM:SendMouseButtonEvent(retry.AbsolutePosition.X + 5, retry.AbsolutePosition.Y + 5, 0, true, game, 0)
+                    task.wait(0.1)
+                    VIM:SendMouseButtonEvent(retry.AbsolutePosition.X + 5, retry.AbsolutePosition.Y + 5, 0, false, game, 0)
+                    isPlaying = false
+                    task.wait(5)
+                    playMacro()
+                    return
+                end
+                task.wait(0.1)
+            end
+            
+            -- Анти-анти-чит (рандомная задержка 10-50мс)
+            task.wait(math.random(1, 5) / 100)
+
+            if action.type == "Key" then
+                VIM:SendKeyEvent(true, action.key, false, game)
+                task.wait(0.05)
+                VIM:SendKeyEvent(false, action.key, false, game)
+            elseif action.type == "Click" then
+                VIM:SendMouseButtonEvent(action.x, action.y, 0, true, game, 0)
+                task.wait(0.1)
+                VIM:SendMouseButtonEvent(action.x, action.y, 0, false, game, 0)
+            end
+        end
+        isPlaying = false
+    end)
+end
+
+-- КНОПКИ
+createBtn("FREECAM (B)", 40, Color3.fromRGB(60, 60, 60), function()
+    freecamActive = not freecamActive
+    cam.CameraType = freecamActive and Enum.CameraType.Scriptable or Enum.CameraType.Custom
+end)
+
+createBtn("START RECORD", 85, Color3.fromRGB(150, 0, 0), function()
+    if not isRecording then
+        recording = { camCFrame = tostring(cam.CFrame) }
+        startTime = tick()
+        isRecording = true
+    else
+        isRecording = false
+        writefile(fileName, game:GetService("HttpService"):JSONEncode(recording))
+    end
+end)
+
+createBtn("LOAD & PLAY", 130, Color3.fromRGB(0, 100, 0), playMacro)
+
+createBtn("DELETE SAVE", 175, Color3.fromRGB(40, 40, 40), function()
+    if isfile(fileName) then delfile(fileName) end
+end)
+
+-- ЗАПИСЬ (Исправлено: сохраняем KeyCode.Value)
+UIS.InputBegan:Connect(function(input, processed)
+    if isRecording and not processed then
+        local timestamp = tick() - startTime
+        if input.UserInputType == Enum.UserInputType.Keyboard then
+            table.insert(recording, {type = "Key", key = input.KeyCode.Value, time = timestamp})
+        elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
+            local mousePos = UIS:GetMouseLocation()
+            table.insert(recording, {type = "Click", x = mousePos.X, y = mousePos.Y, time = timestamp})
+        end
+    end
+end)
+
+-- УПРАВЛЕНИЕ КАМЕРОЙ
+RunService.RenderStepped:Connect(function()
+    if freecamActive then
+        if UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+            local delta = UIS:GetMouseDelta()
+            ry, rx = ry - delta.X * 0.5, math.clamp(rx - delta.Y * 0.5, -80, 80)
+            UIS.MouseBehavior = Enum.MouseBehavior.LockCurrentPosition
+        else
+            UIS.MouseBehavior = Enum.MouseBehavior.Default
+        end
+        cam.CFrame = CFrame.new(cam.CFrame.Position) * CFrame.Angles(0, math.rad(ry), 0) * CFrame.Angles(math.rad(rx), 0, 0)
+        local move = Vector3.new(0,0,0)
+        if UIS:IsKeyDown("W") then move = move + cam.CFrame.LookVector end
+        if UIS:IsKeyDown("S") then move = move - cam.CFrame.LookVector end
+        if UIS:IsKeyDown("A") then move = move - cam.CFrame.RightVector end
+        if UIS:IsKeyDown("D") then move = move + cam.CFrame.RightVector end
+        cam.CFrame = cam.CFrame + (move * (UIS:IsKeyDown(Enum.KeyCode.LeftShift) and flySpeed*3 or flySpeed))
+    end
+end)
+
+UIS.InputBegan:Connect(function(i, p) if i.KeyCode == Enum.KeyCode.RightShift then Main.Visible = not Main.Visible end end)
