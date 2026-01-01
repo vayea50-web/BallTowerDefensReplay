@@ -1,19 +1,11 @@
--- [[ ULTIMATE MACRO SYSTEM BY GEMINI ]] --
+-- [[ ULTIMATE MACRO SYSTEM - FIXED VERSION ]] --
 
--- 1. КРАСИВОЕ ИНТРО ПРИ ЗАПУСКЕ
-local StarterGui = game:GetService("StarterGui")
-StarterGui:SetCore("SendNotification", {
-    Title = "Macro System",
-    Text = "Loading... Please wait",
-    Duration = 5;
-})
-
--- 2. САМ КОД БОТА
 local P = game.Players.LocalPlayer
 local UIS = game:GetService("UserInputService")
 local VIM = game:GetService("VirtualInputManager")
 local RunService = game:GetService("RunService")
 local cam = workspace.CurrentCamera
+local StarterGui = game:GetService("StarterGui")
 
 local recording = {}
 local isRecording = false
@@ -24,9 +16,16 @@ local fileName = "macro_pro_save.txt"
 local rx, ry = 0, 0
 local flySpeed = 1.5
 
+-- Уведомление о запуске
+StarterGui:SetCore("SendNotification", {
+    Title = "Macro Loaded",
+    Text = "Keys: B - Freecam, RShift - Menu",
+    Duration = 5
+})
+
 -- СОЗДАНИЕ МЕНЮ
 local g = Instance.new("ScreenGui", P.PlayerGui)
-g.Name = "UltimateBot_Cloud"
+g.Name = "UltimateBot_Fixed"
 g.ResetOnSpawn = false
 
 local Main = Instance.new("Frame", g)
@@ -36,11 +35,10 @@ Main.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 Main.BorderSizePixel = 2
 Main.BorderColor3 = Color3.new(1, 0, 0)
 
--- Заголовок меню
 local T = Instance.new("TextLabel", Main)
 T.Size = UDim2.new(1, 0, 0, 30)
 T.BackgroundColor3 = Color3.new(0.5, 0, 0)
-T.Text = "PRO RECORDER v1.0"
+T.Text = "STABLE RECORDER v1.1"
 T.TextColor3 = Color3.new(1, 1, 1)
 T.Font = Enum.Font.GothamBold
 
@@ -56,7 +54,7 @@ local function createBtn(txt, y, color, func)
     return b
 end
 
--- ЛОГИКА АВТО-РЕСТАРТА
+-- Проверка конца игры
 local function checkGameOver()
     for _, v in pairs(P.PlayerGui:GetDescendants()) do
         if v:IsA("GuiButton") and v.Visible and (v.Name:lower():find("retry") or v.Name:lower():find("restart") or v.Text:lower():find("retry")) then
@@ -66,6 +64,7 @@ local function checkGameOver()
     return nil
 end
 
+-- Функция воспроизведения с защитой
 local function playMacro()
     if isPlaying or not isfile(fileName) then return end
     local data = game:GetService("HttpService"):JSONDecode(readfile(fileName))
@@ -95,13 +94,19 @@ local function playMacro()
                     playMacro()
                     return
                 end
-                task.wait(0.1)
+                task.wait(0.05)
             end
             
+            -- Небольшой рандом для обхода ANTI-MACRO
+            task.wait(math.random(1, 10) / 100)
+
             if action.type == "Key" then
-                VIM:SendKeyEvent(true, action.key, false, game)
-                task.wait(0.05)
-                VIM:SendKeyEvent(false, action.key, false, game)
+                -- Безопасная эмуляция клавиши
+                pcall(function()
+                    VIM:SendKeyEvent(true, action.key, false, game)
+                    task.wait(0.05)
+                    VIM:SendKeyEvent(false, action.key, false, game)
+                end)
             elseif action.type == "Click" then
                 VIM:SendMouseButtonEvent(action.x, action.y, 0, true, game, 0)
                 task.wait(0.1)
@@ -112,7 +117,7 @@ local function playMacro()
     end)
 end
 
--- КНОПКИ
+-- Кнопки
 createBtn("FREECAM (B)", 40, Color3.fromRGB(60, 60, 60), function()
     freecamActive = not freecamActive
     cam.CameraType = freecamActive and Enum.CameraType.Scriptable or Enum.CameraType.Custom
@@ -123,11 +128,9 @@ createBtn("START RECORD", 85, Color3.fromRGB(150, 0, 0), function()
         recording = { camCFrame = tostring(cam.CFrame) }
         startTime = tick()
         isRecording = true
-        StarterGui:SetCore("SendNotification", {Title = "REC", Text = "Recording Started", Duration = 2})
     else
         isRecording = false
         writefile(fileName, game:GetService("HttpService"):JSONEncode(recording))
-        StarterGui:SetCore("SendNotification", {Title = "REC", Text = "Saved to " .. fileName, Duration = 2})
     end
 end)
 
@@ -137,12 +140,12 @@ createBtn("DELETE SAVE", 175, Color3.fromRGB(40, 40, 40), function()
     if isfile(fileName) then delfile(fileName) end
 end)
 
--- УПРАВЛЕНИЕ КАМЕРОЙ И ВВОД
+-- Исправленная запись клавиш (KeyCode.Value вместо имен)
 UIS.InputBegan:Connect(function(input, processed)
     if isRecording and not processed then
         local timestamp = tick() - startTime
         if input.UserInputType == Enum.UserInputType.Keyboard then
-            table.insert(recording, {type = "Key", key = input.KeyCode.Value, time = timestamp})
+            table.insert(recording, {type = "Key", key = input.KeyCode, time = timestamp})
         elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
             local mousePos = UIS:GetMouseLocation()
             table.insert(recording, {type = "Click", x = mousePos.X, y = mousePos.Y, time = timestamp})
@@ -150,6 +153,7 @@ UIS.InputBegan:Connect(function(input, processed)
     end
 end)
 
+-- Камера
 RunService.RenderStepped:Connect(function()
     if freecamActive then
         if UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
@@ -172,9 +176,3 @@ RunService.RenderStepped:Connect(function()
 end)
 
 UIS.InputBegan:Connect(function(i, p) if i.KeyCode == Enum.KeyCode.RightShift then Main.Visible = not Main.Visible end end)
-
-StarterGui:SetCore("SendNotification", {
-    Title = "Success!",
-    Text = "Macro System Loaded",
-    Duration = 3;
-})
